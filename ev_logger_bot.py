@@ -296,26 +296,36 @@ Date & Time After Stopping the Charge: {end_time}"""
     await update.message.reply_text("✅ Charging session completed!")
 
 # ================= MAIN (WEBHOOK MODE) =================
+import asyncio
+from fastapi import FastAPI, Request
+import uvicorn
+
+telegram_app = Application.builder().token(BOT_TOKEN).build()
+
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CommandHandler("energy", energy))
+telegram_app.add_handler(CommandHandler("complete", complete))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+telegram_app.add_handler(CallbackQueryHandler(charging_type, pattern="home|outside"))
+telegram_app.add_handler(CallbackQueryHandler(charge_type_select, pattern="full|partial"))
+
+fastapi_app = FastAPI()
+
+@fastapi_app.on_event("startup")
+async def startup():
+    await telegram_app.initialize()
+    await telegram_app.start()
+    await telegram_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+
+@fastapi_app.post("/webhook")
+async def webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, telegram_app.bot)
+    await telegram_app.process_update(update)
+    return {"status": "ok"}
+
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("energy", energy))
-    app.add_handler(CommandHandler("complete", complete))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(charging_type, pattern="home|outside"))
-    app.add_handler(CallbackQueryHandler(charge_type_select, pattern="full|partial"))
-
-    async def on_startup(app: Application):
-        await app.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
-
-    app.post_init = on_startup
-
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path="webhook",
-    )
+    uvicorn.run(fastapi_app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
     main()
