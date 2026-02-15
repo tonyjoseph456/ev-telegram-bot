@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -184,7 +185,9 @@ async def charging_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Home Charging" if query.data == "home" else "Outside Charging"
     )
     context.user_data["base_data"] = data
-    context.user_data["start_time"] = datetime.now().strftime("%d-%m-%Y %I:%M %p")
+    context.user_data["start_time"] = datetime.now(
+    ZoneInfo("Asia/Kolkata")
+).strftime("%d-%m-%Y %I:%M %p")
 
     keyboard = [[
         InlineKeyboardButton("✅ Full Charge", callback_data="full"),
@@ -238,7 +241,9 @@ async def finalize_full(update, context):
     if location == "Home Charging":
         energy_line = f"Energy Meter Reading: {context.user_data.get('energy_value', '')}\n"
 
-    end_time = datetime.now().strftime("%d-%m-%Y %I:%M %p")
+   end_time = datetime.now(
+    ZoneInfo("Asia/Kolkata")
+).strftime("%d-%m-%Y %I:%M %p")
 
     updated_text = f"""🚗 EV Log Entry
 
@@ -267,7 +272,11 @@ async def finalize_partial(update, context):
     if location == "Home Charging":
         energy_line = f"Energy Meter Reading: {context.user_data.get('energy_value', '')}\n"
 
-    end_time = datetime.now().strftime("%d-%m-%Y %I:%M %p")
+   end_time = datetime.now(
+    ZoneInfo("Asia/Kolkata")
+).strftime("%d-%m-%Y %I:%M %p")
+
+
 
     updated_text = f"""🚗 EV Log Entry
 
@@ -306,5 +315,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
