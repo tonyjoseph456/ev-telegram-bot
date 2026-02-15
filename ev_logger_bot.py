@@ -22,13 +22,9 @@ logging.basicConfig(level=logging.INFO)
 
 user_data_temp = {}
 
-# ================= SECURITY =================
-def is_allowed(update: Update):
-    return update.effective_user.id == ALLOWED_USER_ID
-
 # ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
+    if update.effective_user.id != ALLOWED_USER_ID:
         return
 
     context.user_data.clear()
@@ -38,9 +34,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🚗 EV Logger Started\n\nEnter Trip Meter Reading:"
     )
 
-# ================= ENERGY =================
+# ================= ENERGY COMMAND =================
 async def energy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
+
+    if update.effective_user.id != ALLOWED_USER_ID:
         return
 
     if context.user_data.get("charging_location") != "Home Charging":
@@ -54,9 +51,10 @@ async def energy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["energy_mode"] = True
     await update.message.reply_text("Enter Energy Meter Reading:")
 
-# ================= COMPLETE =================
+# ================= COMPLETE COMMAND =================
 async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
+
+    if update.effective_user.id != ALLOWED_USER_ID:
         return
 
     if context.user_data.get("charge_type") is None:
@@ -77,13 +75,13 @@ async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("❌ Nothing to complete.")
 
-# ================= MESSAGE FLOW =================
+# ================= TEXT HANDLER =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if not is_allowed(update):
+    user_id = update.effective_user.id
+    if user_id != ALLOWED_USER_ID:
         return
 
-    user_id = update.effective_user.id
     text = update.message.text.strip()
 
     # ENERGY MODE
@@ -290,10 +288,9 @@ Date & Time After Stopping the Charge: {end_time}"""
 
 # ================= MAIN (WEBHOOK MODE) =================
 async def post_init(application):
-    await application.bot.set_webhook(WEBHOOK_URL)
+    await application.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
 
 def main():
-
     app = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -311,8 +308,8 @@ def main():
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
-        webhook_url=WEBHOOK_URL,
-        allowed_updates=Update.ALL_TYPES,
+        url_path="webhook",
+        webhook_url=f"{WEBHOOK_URL}/webhook",
     )
 
 if __name__ == "__main__":
