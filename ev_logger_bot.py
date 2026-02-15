@@ -287,16 +287,8 @@ Date & Time After Stopping the Charge: {end_time}"""
     await update.message.reply_text("✅ Charging session completed!")
 
 # ================= MAIN (WEBHOOK MODE) =================
-async def post_init(application):
-    await application.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
-
 def main():
-    app = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .post_init(post_init)
-        .build()
-    )
+    app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("energy", energy))
@@ -314,3 +306,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
