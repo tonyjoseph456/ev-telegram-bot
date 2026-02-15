@@ -11,14 +11,13 @@ from telegram.ext import (
     filters,
 )
 
-# ================= ENV =================
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_ID = int(os.environ.get("CHANNEL_ID"))
-ALLOWED_USER_ID = int(os.environ.get("ALLOWED_USER_ID"))
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+# ================= ENV VARIABLES =================
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHANNEL_ID = int(os.environ["CHANNEL_ID"])
+ALLOWED_USER_ID = int(os.environ["ALLOWED_USER_ID"])
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 PORT = int(os.environ.get("PORT", 8080))
 
-# ================= LOGGING =================
 logging.basicConfig(level=logging.INFO)
 
 user_data_temp = {}
@@ -41,7 +40,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= ENERGY =================
 async def energy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not is_allowed(update):
         return
 
@@ -49,25 +47,35 @@ async def energy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Energy is only for Home Charging.")
         return
 
+    if context.user_data.get("charge_type") not in ["full", "partial"]:
+        await update.message.reply_text("❌ No active charging session.")
+        return
+
     context.user_data["energy_mode"] = True
     await update.message.reply_text("Enter Energy Meter Reading:")
 
 # ================= COMPLETE =================
 async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not is_allowed(update):
         return
 
-    if context.user_data.get("charge_type") == "partial":
+    if context.user_data.get("charge_type") is None:
+        await update.message.reply_text("❌ No active charging session.")
+        return
+
+    if (
+        context.user_data["charging_location"] == "Outside Charging"
+        and context.user_data["charge_type"] == "full"
+    ):
+        await finalize_full(update, context)
+        return
+
+    if context.user_data["charge_type"] == "partial":
         context.user_data["complete_battery_mode"] = True
         await update.message.reply_text("Enter Battery Percentage After Charging:")
         return
 
-    if context.user_data.get("charge_type") == "full":
-        await finalize_full(update, context)
-        return
-
-    await update.message.reply_text("❌ No active charging session.")
+    await update.message.reply_text("❌ Nothing to complete.")
 
 # ================= MESSAGE FLOW =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,7 +90,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("energy_mode"):
         try:
             context.user_data["energy_value"] = round(float(text), 1)
-        except:
+        except ValueError:
             await update.message.reply_text("❌ Enter valid decimal value")
             return
 
@@ -95,16 +103,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Enter Battery Percentage After Charging:")
         return
 
-    # PARTIAL BATTERY
+    # COMPLETE BATTERY
     if context.user_data.get("complete_battery_mode"):
+        if not text.isdigit():
+            await update.message.reply_text("❌ Enter valid number")
+            return
+
         context.user_data["battery_after"] = int(text)
         context.user_data["complete_battery_mode"] = False
         context.user_data["complete_dte_mode"] = True
         await update.message.reply_text("Enter Distance To Empty After Charging:")
         return
 
-    # PARTIAL DTE
+    # COMPLETE DTE
     if context.user_data.get("complete_dte_mode"):
+        if not text.isdigit():
+            await update.message.reply_text("❌ Enter valid number")
+            return
+
         context.user_data["dte_after"] = int(text)
         context.user_data["complete_dte_mode"] = False
         await finalize_partial(update, context)
@@ -117,32 +133,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = user_data_temp[user_id]
 
     if "trip" not in data:
-        data["trip"] = round(float(text), 1)
-        await update.message.reply_text("Enter Odometer Reading:")
+        try:
+            data["trip"] = round(float(text), 1)
+            await update.message.reply_text("Enter Odometer Reading:")
+        except:
+            await update.message.reply_text("❌ Enter valid decimal")
         return
 
     if "odo" not in data:
-        data["odo"] = int(text)
-        await update.message.reply_text("Enter Battery Percentage:")
+        if text.isdigit():
+            data["odo"] = int(text)
+            await update.message.reply_text("Enter Battery Percentage:")
+        else:
+            await update.message.reply_text("❌ Enter valid number")
         return
 
     if "battery" not in data:
-        data["battery"] = int(text)
-        await update.message.reply_text("Enter Distance To Empty:")
+        if text.isdigit():
+            data["battery"] = int(text)
+            await update.message.reply_text("Enter Distance To Empty:")
+        else:
+            await update.message.reply_text("❌ Enter valid number")
         return
 
     if "dte" not in data:
-        data["dte"] = int(text)
+        if text.isdigit():
+            data["dte"] = int(text)
 
-        keyboard = [[
-            InlineKeyboardButton("🏠 Home Charging", callback_data="home"),
-            InlineKeyboardButton("⚡ Outside Charging", callback_data="outside"),
-        ]]
+            keyboard = [[
+                InlineKeyboardButton("🏠 Home Charging", callback_data="home"),
+                InlineKeyboardButton("⚡ Outside Charging", callback_data="outside"),
+            ]]
 
-        await update.message.reply_text(
-            "Select Charging Type:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-        )
+            await update.message.reply_text(
+                "Select Charging Type:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        else:
+            await update.message.reply_text("❌ Enter valid number")
         return
 
 # ================= CHARGING LOCATION =================
@@ -260,10 +288,18 @@ Date & Time After Stopping the Charge: {end_time}"""
     await context.bot.edit_message_text(chat_id=CHANNEL_ID, message_id=message_id, text=updated_text)
     await update.message.reply_text("✅ Charging session completed!")
 
-# ================= MAIN (WEBHOOK) =================
+# ================= MAIN (WEBHOOK MODE) =================
+async def post_init(application):
+    await application.bot.set_webhook(WEBHOOK_URL)
+
 def main():
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("energy", energy))
@@ -276,6 +312,7 @@ def main():
         listen="0.0.0.0",
         port=PORT,
         webhook_url=WEBHOOK_URL,
+        allowed_updates=Update.ALL_TYPES,
     )
 
 if __name__ == "__main__":
