@@ -306,15 +306,20 @@ def main():
     app.add_handler(CallbackQueryHandler(charging_type, pattern="home|outside"))
     app.add_handler(CallbackQueryHandler(charge_type_select, pattern="full|partial"))
 
+    async def on_startup(app: Application):
+        await app.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+
+    app.post_init = on_startup
+
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path="webhook",
-        webhook_url=f"{WEBHOOK_URL}/webhook",
     )
 
 if __name__ == "__main__":
     main()
+
 
 
 
